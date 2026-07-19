@@ -1,8 +1,8 @@
-# CapCall
+# CapsCall
 
 **Talk in your language. They'll read theirs.**
 
-CapCall is a real-time, peer-to-peer voice and video calling website for two people, with live translated captions. Each person picks the language they speak — what they say is transcribed, translated, and shown as a caption (and optionally spoken aloud) in the other person's chosen language.
+CapsCall is a real-time, peer-to-peer voice and video calling website for two people, with live translated captions. Each person picks the language they speak — what they say is transcribed, translated, and shown as a caption (and optionally spoken aloud) in the other person's chosen language.
 
 ## Live demo
 
