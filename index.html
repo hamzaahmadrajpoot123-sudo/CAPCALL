@@ -139,13 +139,10 @@
   <div class="screen active" id="setupScreen">
     <div class="card">
       <h1>Set up your call</h1>
-      <div class="sub">Your details stay on this device only. Phone number is not verified — it's just used as your display ID.</div>
+      <div class="sub">Enter your name, start a call, and send the code to the person you want to talk to.</div>
 
       <label>Your name</label>
       <input type="text" id="userName" placeholder="e.g. Hamza">
-
-      <label>Mobile number</label>
-      <input type="text" id="userPhone" placeholder="+1 555 000 0000">
 
       <label>Your language (what you'll speak)</label>
       <select id="myLang"></select>
@@ -267,7 +264,7 @@ function showScreen(id){
 
 /* ---------------- State ---------------- */
 let peer, conn, call, localStream;
-let myName, myPhone, mySpeechLang, myTransLang;
+let myName, mySpeechLang, myTransLang;
 let peerTransLang = "en";
 let recognizer, recognizing = false;
 let captionsOn = true, voiceOn = false;
@@ -285,7 +282,6 @@ function genRoomId(len=6){
 
 document.getElementById('startBtn').onclick = async ()=>{
   myName = document.getElementById('userName').value.trim() || 'User';
-  myPhone = document.getElementById('userPhone').value.trim() || '—';
   const [sp, tr] = myLangSel.value.split('|');
   mySpeechLang = sp; myTransLang = tr;
 
@@ -359,7 +355,7 @@ function joinRoom(roomId){
 
 function wireDataConn(){
   conn.on('open', ()=>{
-    conn.send({type:'hello', name:myName, phone:myPhone, transLang:myTransLang, speechLang:mySpeechLang});
+    conn.send({type:'hello', name:myName, transLang:myTransLang, speechLang:mySpeechLang});
   });
   conn.on('data', handleData);
 }
@@ -376,7 +372,7 @@ function wireCallEvents(){
 
 function handleData(data){
   if(data.type === 'hello'){
-    document.getElementById('callWithName').textContent = data.name + ' (' + data.phone + ')';
+    document.getElementById('callWithName').textContent = data.name;
     peerTransLang = data.transLang;
   } else if(data.type === 'caption'){
     showIncomingCaption(data.text, data.original);
