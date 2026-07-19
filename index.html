@@ -84,6 +84,9 @@
   .caption-bar{position:absolute;left:16px;right:16px;bottom:100px;z-index:4;display:flex;justify-content:center;pointer-events:none;}
   .caption-box{max-width:640px;background:rgba(8,20,24,.82);backdrop-filter:blur(6px);border:1px solid rgba(224,167,70,.35);border-radius:14px;padding:12px 18px;text-align:center;font-size:16px;line-height:1.6;min-height:24px;}
   .caption-box .orig{font-size:11px;color:var(--text-lo);margin-top:4px;}
+  .caption-box .tag{display:block;font-weight:700;font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;margin-bottom:2px;}
+  .caption-box.self-caption{border-color:rgba(63,184,168,.4);font-size:13.5px;color:var(--text-lo);padding:8px 16px;}
+  .caption-box.self-caption .tag{color:var(--teal);font-weight:700;font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;margin-bottom:2px;display:block;}
 
   .call-topinfo{position:absolute;top:16px;left:16px;right:16px;z-index:4;display:flex;justify-content:space-between;align-items:center;}
   .pill{background:rgba(8,20,24,.75);border:1px solid var(--line);padding:7px 14px;border-radius:999px;font-size:12.5px;display:flex;align-items:center;gap:7px;}
@@ -191,7 +194,10 @@
         <div class="mini-toggle" id="voiceToggle"><div class="box"></div> Translated voice (TTS)</div>
       </div>
 
-      <div class="caption-bar"><div class="caption-box" id="captionBox" style="display:none;"></div></div>
+      <div class="caption-bar" style="flex-direction:column;align-items:center;gap:8px;">
+        <div class="caption-box self-caption" id="selfCaptionBox" style="display:none;"></div>
+        <div class="caption-box" id="captionBox" style="display:none;"></div>
+      </div>
 
       <div class="controls">
         <button class="btn-round" id="micBtn" title="Mic">🎤</button>
@@ -410,6 +416,7 @@ function startRecognition(){
     const text = e.results[e.results.length-1][0].transcript.trim();
     if(!text) return;
     const [mySpeech, myTr] = myLangSel.value.split('|');
+    showSelfCaption(text);
     let translated = text;
     try{
       translated = await translateText(text, myTr, peerTransLang);
@@ -440,7 +447,14 @@ function showIncomingCaption(text, original){
   if(!captionsOn) return;
   const box = document.getElementById('captionBox');
   box.style.display = 'block';
-  box.innerHTML = text + `<div class="orig">(original: ${original})</div>`;
+  box.innerHTML = `<span class="tag" style="color:var(--gold-soft);">They said</span>` + text;
+}
+
+function showSelfCaption(text){
+  if(!captionsOn) return;
+  const box = document.getElementById('selfCaptionBox');
+  box.style.display = 'block';
+  box.innerHTML = `<span class="tag">You said</span>${text}`;
 }
 
 function speakText(text, lang){
@@ -454,7 +468,10 @@ function speakText(text, lang){
 document.getElementById('captionToggle').onclick = function(){
   captionsOn = !captionsOn;
   this.classList.toggle('on', captionsOn);
-  if(!captionsOn) document.getElementById('captionBox').style.display='none';
+  if(!captionsOn){
+    document.getElementById('captionBox').style.display='none';
+    document.getElementById('selfCaptionBox').style.display='none';
+  }
 };
 document.getElementById('voiceToggle').onclick = function(){
   voiceOn = !voiceOn;
