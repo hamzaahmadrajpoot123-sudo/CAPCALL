@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CapCall — Talk in your language. They'll read theirs.</title>
+<meta name="description" content="CapCall: real-time voice and video calls between two people, with live translated captions in each person's own language.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<style>
+  :root{
+    --bg-deep:#0b1a1f;
+    --bg-panel:#122730;
+    --bg-panel-2:#16303a;
+    --line:#1f3d47;
+    --gold:#e0a746;
+    --gold-soft:#f2c877;
+    --teal:#3fb8a8;
+    --text-hi:#eef4f2;
+    --text-lo:#9fb8bb;
+    --danger:#d9634f;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg-deep);color:var(--text-hi);font-family:'Inter',sans-serif;overflow-x:hidden;}
+  h1,h2,.brand-name{font-family:'Sora',sans-serif;}
+
+  .waveframe{position:fixed;inset:0;z-index:0;opacity:.35;pointer-events:none;}
+
+  .app{position:relative;z-index:1;min-height:100%;display:flex;flex-direction:column;}
+
+  /* ===== TOP BAR ===== */
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 28px;border-bottom:1px solid var(--line);}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand-mark{width:34px;height:34px;border-radius:9px;background:conic-gradient(from 180deg, var(--gold), var(--teal), var(--gold));display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--bg-deep);font-size:15px;}
+  .brand-name{font-weight:800;letter-spacing:.2px;font-size:18px;}
+  .brand-tag{font-size:11px;color:var(--text-lo);letter-spacing:.5px;text-transform:uppercase;}
+
+  /* ===== SCREENS ===== */
+  .screen{flex:1;display:none;padding:32px;align-items:center;justify-content:center;}
+  .screen.active{display:flex;}
+
+  .card{background:linear-gradient(180deg,var(--bg-panel),var(--bg-panel-2));border:1px solid var(--line);border-radius:20px;padding:36px;width:100%;max-width:460px;box-shadow:0 20px 60px rgba(0,0,0,.35);}
+  .card h1{font-size:23px;margin:0 0 6px;font-weight:800;}
+  .card .sub{color:var(--text-lo);font-size:13.5px;margin-bottom:26px;line-height:1.6;}
+
+  label{display:block;font-size:12.5px;color:var(--text-lo);margin:16px 0 6px;font-weight:600;letter-spacing:.2px;}
+  label:first-of-type{margin-top:0;}
+  input[type=text], select{
+    width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);
+    background:#0d1f25;color:var(--text-hi);font-size:14.5px;font-family:inherit;outline:none;
+  }
+  input[type=text]:focus, select:focus{border-color:var(--gold);}
+  select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--gold) 50%),linear-gradient(135deg,var(--gold) 50%,transparent 50%);background-position:calc(100% - 18px) 52%, calc(100% - 13px) 52%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px 20px;border-radius:10px;border:none;font-weight:700;font-size:14.5px;cursor:pointer;font-family:inherit;transition:transform .12s ease, filter .12s ease;width:100%;}
+  .btn:active{transform:scale(.98);}
+  .btn-primary{background:linear-gradient(135deg,var(--gold-soft),var(--gold));color:#26160a;margin-top:22px;}
+  .btn-primary:hover{filter:brightness(1.06);}
+  .btn-secondary{background:transparent;border:1px solid var(--line);color:var(--text-hi);margin-top:10px;}
+  .btn-secondary:hover{border-color:var(--teal);}
+  .btn-round{width:52px;height:52px;border-radius:50%;padding:0;flex:none;}
+
+  .tabs{display:flex;gap:8px;margin-bottom:6px;background:#0d1f25;padding:4px;border-radius:10px;border:1px solid var(--line);}
+  .tab{flex:1;text-align:center;padding:9px 0;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;color:var(--text-lo);}
+  .tab.active{background:var(--teal);color:#06201c;}
+
+  .hint{font-size:12px;color:var(--text-lo);margin-top:10px;line-height:1.6;}
+  .hint b{color:var(--gold-soft);}
+
+  .status-line{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-lo);margin-top:14px;}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--text-lo);}
+  .dot.live{background:var(--teal);box-shadow:0 0 0 4px rgba(63,184,168,.15);}
+
+  /* ===== CALL SCREEN ===== */
+  #callScreen{padding:0;flex-direction:column;align-items:stretch;}
+  .call-wrap{flex:1;position:relative;display:flex;align-items:center;justify-content:center;background:#040d10;}
+  video{width:100%;height:100%;object-fit:cover;background:#04121a;}
+  #remoteVideo{position:absolute;inset:0;}
+  #localVideo{position:absolute;bottom:110px;right:20px;width:130px;height:174px;border-radius:14px;border:2px solid var(--gold);object-fit:cover;z-index:3;box-shadow:0 8px 24px rgba(0,0,0,.5);}
+  .placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-lo);gap:10px;}
+  .placeholder .ring{width:74px;height:74px;border-radius:50%;border:2px dashed var(--gold);display:flex;align-items:center;justify-content:center;font-size:26px;}
+
+  .caption-bar{position:absolute;left:16px;right:16px;bottom:100px;z-index:4;display:flex;justify-content:center;pointer-events:none;}
+  .caption-box{max-width:640px;background:rgba(8,20,24,.82);backdrop-filter:blur(6px);border:1px solid rgba(224,167,70,.35);border-radius:14px;padding:12px 18px;text-align:center;font-size:16px;line-height:1.6;min-height:24px;}
+  .caption-box .orig{font-size:11px;color:var(--text-lo);margin-top:4px;}
+
+  .call-topinfo{position:absolute;top:16px;left:16px;right:16px;z-index:4;display:flex;justify-content:space-between;align-items:center;}
+  .pill{background:rgba(8,20,24,.75);border:1px solid var(--line);padding:7px 14px;border-radius:999px;font-size:12.5px;display:flex;align-items:center;gap:7px;}
+
+  .controls{display:flex;align-items:center;justify-content:center;gap:16px;padding:22px;background:linear-gradient(180deg,transparent,var(--bg-deep) 40%);position:relative;z-index:5;}
+  .controls .btn-round{background:#1c3742;color:var(--text-hi);border:1px solid var(--line);font-size:18px;}
+  .controls .btn-round.off{background:var(--danger);color:#fff;}
+  .toggle-row{position:absolute;top:16px;right:16px;z-index:4;display:flex;flex-direction:column;gap:8px;align-items:flex-end;}
+  .mini-toggle{background:rgba(8,20,24,.78);border:1px solid var(--line);padding:6px 12px;border-radius:999px;font-size:11.5px;color:var(--text-lo);cursor:pointer;display:flex;align-items:center;gap:6px;}
+  .mini-toggle.on{color:var(--gold-soft);border-color:var(--gold);}
+  .mini-toggle .box{width:12px;height:12px;border-radius:3px;border:1px solid currentColor;position:relative;}
+  .mini-toggle.on .box::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;}
+
+  code.roomcode{background:#0d1f25;border:1px solid var(--line);padding:10px 14px;border-radius:10px;display:block;font-size:18px;letter-spacing:2px;text-align:center;color:var(--gold-soft);font-weight:700;margin-top:8px;}
+  .copybtn{margin-top:8px;}
+
+  footer.foot{padding:16px 28px;text-align:center;font-size:11.5px;color:var(--text-lo);border-top:1px solid var(--line);}
+
+  @media (max-width:520px){
+    .card{padding:26px 20px;border-radius:16px;}
+    #localVideo{width:96px;height:128px;bottom:130px;right:14px;}
+  }
+</style>
+</head>
+<body>
+
+<svg class="waveframe" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="wg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e0a746"/>
+      <stop offset="100%" stop-color="#3fb8a8"/>
+    </linearGradient>
+  </defs>
+  <g stroke="url(#wg)" fill="none" stroke-width="1.2">
+    <path id="wave1" d="M-100,420 Q100,300 300,420 T700,420 T1100,420 T1500,420" />
+    <path id="wave2" d="M-100,460 Q150,560 350,460 T750,460 T1150,460 T1550,460" opacity="0.5"/>
+  </g>
+</svg>
+
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">C</div>
+      <div>
+        <div class="brand-name">CapCall</div>
+        <div class="brand-tag">Talk your language. They read theirs.</div>
+      </div>
+    </div>
+    <div id="topStatus" class="status-line"><span class="dot" id="statusDot"></span><span id="statusText">Offline</span></div>
+  </div>
+
+  <!-- SETUP SCREEN -->
+  <div class="screen active" id="setupScreen">
+    <div class="card">
+      <h1>Set up your call</h1>
+      <div class="sub">Your details stay on this device only. Phone number is not verified — it's just used as your display ID.</div>
+
+      <label>Your name</label>
+      <input type="text" id="userName" placeholder="e.g. Hamza">
+
+      <label>Mobile number</label>
+      <input type="text" id="userPhone" placeholder="+1 555 000 0000">
+
+      <label>Your language (what you'll speak)</label>
+      <select id="myLang"></select>
+
+      <label style="margin-top:20px;">Call type</label>
+      <div class="tabs">
+        <div class="tab active" data-mode="new">Start a new call</div>
+        <div class="tab" data-mode="join">Join with a code</div>
+      </div>
+      <div id="joinCodeWrap" style="display:none;">
+        <label>Room code from the other person</label>
+        <input type="text" id="joinCode" placeholder="e.g. CAP-AB12CD">
+      </div>
+
+      <button class="btn btn-primary" id="startBtn">📞 Set up call</button>
+      <div class="hint">Calls are for <b>2 people</b>. Start a call, share the code (WhatsApp/SMS), and the other person joins with it — over the real internet, from anywhere.</div>
+    </div>
+  </div>
+
+  <!-- ROOM SCREEN (waiting) -->
+  <div class="screen" id="roomScreen">
+    <div class="card">
+      <h1 id="roomTitle">Waiting for the other person...</h1>
+      <div class="sub" id="roomSub">Send this code to the person you want to call.</div>
+      <code class="roomcode" id="roomCodeDisplay">------</code>
+      <button class="btn btn-secondary copybtn" id="copyCodeBtn">📋 Copy code</button>
+      <div class="status-line" style="margin-top:18px;"><span class="dot" id="roomDot"></span><span id="roomStatusText">Connecting to signaling server...</span></div>
+      <button class="btn btn-secondary" id="cancelRoomBtn" style="margin-top:20px;">Cancel</button>
+    </div>
+  </div>
+
+  <!-- CALL SCREEN -->
+  <div class="screen" id="callScreen">
+    <div class="call-wrap">
+      <video id="remoteVideo" autoplay playsinline></video>
+      <div class="placeholder" id="remotePlaceholder"><div class="ring">🎙️</div><div>Connecting to the other person...</div></div>
+      <video id="localVideo" autoplay playsinline muted></video>
+
+      <div class="call-topinfo">
+        <div class="pill"><span class="dot live"></span> <span id="callWithName">Connected</span></div>
+        <div class="pill" id="myLangPill">🗣️ —</div>
+      </div>
+
+      <div class="toggle-row">
+        <div class="mini-toggle on" id="captionToggle"><div class="box"></div> Live captions</div>
+        <div class="mini-toggle" id="voiceToggle"><div class="box"></div> Translated voice (TTS)</div>
+      </div>
+
+      <div class="caption-bar"><div class="caption-box" id="captionBox" style="display:none;"></div></div>
+
+      <div class="controls">
+        <button class="btn-round" id="micBtn" title="Mic">🎤</button>
+        <button class="btn-round" id="camBtn" title="Camera">📹</button>
+        <button class="btn-round off" id="hangBtn" title="End call">☎</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="foot">CapCall — peer-to-peer voice &amp; video, live translated captions. No account, no data stored on a server.</footer>
+</div>
+
+<script>
+/* ---------------- Language list (speech + translate codes) ---------------- */
+const LANGS = [
+ ["en-US","en","English"],
+ ["ur-PK","ur","Urdu"],
+ ["ar-SA","ar","Arabic"],
+ ["hi-IN","hi","Hindi"],
+ ["fa-IR","fa","Persian"],
+ ["ps-AF","ps","Pashto"],
+ ["pa-IN","pa","Punjabi"],
+ ["bn-BD","bn","Bengali"],
+ ["tr-TR","tr","Turkish"],
+ ["fr-FR","fr","French"],
+ ["de-DE","de","German"],
+ ["es-ES","es","Spanish"],
+ ["pt-PT","pt","Portuguese"],
+ ["it-IT","it","Italian"],
+ ["ru-RU","ru","Russian"],
+ ["zh-CN","zh","Chinese"],
+ ["ja-JP","ja","Japanese"],
+ ["ko-KR","ko","Korean"],
+ ["id-ID","id","Indonesian"],
+ ["ms-MY","ms","Malay"],
+ ["th-TH","th","Thai"],
+ ["vi-VN","vi","Vietnamese"],
+ ["sw-KE","sw","Swahili"],
+ ["nl-NL","nl","Dutch"],
+ ["pl-PL","pl","Polish"],
+ ["uk-UA","uk","Ukrainian"],
+ ["ta-IN","ta","Tamil"],
+ ["te-IN","te","Telugu"],
+ ["gu-IN","gu","Gujarati"],
+ ["ml-IN","ml","Malayalam"],
+];
+
+const myLangSel = document.getElementById('myLang');
+LANGS.forEach(([speech,tr,label])=>{
+  const o = document.createElement('option');
+  o.value = speech+"|"+tr; o.textContent = label;
+  myLangSel.appendChild(o);
+});
+myLangSel.value = "en-US|en";
+
+/* ---------------- Setup screen logic ---------------- */
+let mode = "new";
+document.querySelectorAll('.tab').forEach(t=>{
+  t.onclick = ()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active'); mode = t.dataset.mode;
+    document.getElementById('joinCodeWrap').style.display = mode==='join' ? 'block':'none';
+  };
+});
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+/* ---------------- State ---------------- */
+let peer, conn, call, localStream;
+let myName, myPhone, mySpeechLang, myTransLang;
+let peerTransLang = "en";
+let recognizer, recognizing = false;
+let captionsOn = true, voiceOn = false;
+
+function setStatus(text, live){
+  document.getElementById('statusText').textContent = text;
+  document.getElementById('statusDot').classList.toggle('live', !!live);
+}
+
+function genRoomId(len=6){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s=''; for(let i=0;i<len;i++) s+=chars[Math.floor(Math.random()*chars.length)];
+  return 'CAP-'+s;
+}
+
+document.getElementById('startBtn').onclick = async ()=>{
+  myName = document.getElementById('userName').value.trim() || 'User';
+  myPhone = document.getElementById('userPhone').value.trim() || '—';
+  const [sp, tr] = myLangSel.value.split('|');
+  mySpeechLang = sp; myTransLang = tr;
+
+  try{
+    localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
+  }catch(e){
+    alert('Camera/mic access is required. Please check your browser permissions.');
+    return;
+  }
+  document.getElementById('localVideo').srcObject = localStream;
+
+  if(mode === 'new'){
+    startAsHost();
+  } else {
+    const code = document.getElementById('joinCode').value.trim().toUpperCase();
+    if(!code){ alert('Please enter a room code'); return; }
+    joinRoom(code);
+  }
+};
+
+function startAsHost(){
+  const roomId = genRoomId();
+  showScreen('roomScreen');
+  document.getElementById('roomTitle').textContent = 'Waiting for the other person...';
+  document.getElementById('roomCodeDisplay').textContent = roomId;
+  document.getElementById('roomStatusText').textContent = 'Connecting to signaling server...';
+
+  peer = new Peer(roomId, {debug:1});
+  peer.on('open', ()=>{
+    document.getElementById('roomDot').classList.add('live');
+    document.getElementById('roomStatusText').textContent = 'Ready — share the code and wait.';
+    setStatus('Online', true);
+  });
+  peer.on('call', incoming=>{
+    call = incoming;
+    call.answer(localStream);
+    wireCallEvents();
+  });
+  peer.on('connection', c=>{
+    conn = c;
+    wireDataConn();
+  });
+  peer.on('error', err=>{ alert('Connection error: '+err.type); });
+
+  document.getElementById('copyCodeBtn').onclick = ()=>{
+    navigator.clipboard.writeText(roomId);
+    document.getElementById('copyCodeBtn').textContent = '✅ Copied';
+    setTimeout(()=>document.getElementById('copyCodeBtn').textContent='📋 Copy code',1500);
+  };
+  document.getElementById('cancelRoomBtn').onclick = ()=>location.reload();
+}
+
+function joinRoom(roomId){
+  showScreen('roomScreen');
+  document.getElementById('roomTitle').textContent = 'Joining room...';
+  document.getElementById('roomCodeDisplay').textContent = roomId;
+  document.getElementById('roomSub').textContent = 'This should only take a moment.';
+  document.getElementById('copyCodeBtn').style.display='none';
+
+  peer = new Peer({debug:1});
+  peer.on('open', ()=>{
+    setStatus('Online', true);
+    conn = peer.connect(roomId, {reliable:true});
+    wireDataConn();
+    call = peer.call(roomId, localStream);
+    wireCallEvents();
+  });
+  peer.on('error', err=>{ alert('Room not found or connection error: '+err.type); });
+  document.getElementById('cancelRoomBtn').onclick = ()=>location.reload();
+}
+
+function wireDataConn(){
+  conn.on('open', ()=>{
+    conn.send({type:'hello', name:myName, phone:myPhone, transLang:myTransLang, speechLang:mySpeechLang});
+  });
+  conn.on('data', handleData);
+}
+
+function wireCallEvents(){
+  call.on('stream', remoteStream=>{
+    document.getElementById('remoteVideo').srcObject = remoteStream;
+    document.getElementById('remotePlaceholder').style.display = 'none';
+    enterCallScreen();
+  });
+  call.on('close', ()=>{ endCall(); });
+  call.on('error', ()=>{ endCall(); });
+}
+
+function handleData(data){
+  if(data.type === 'hello'){
+    document.getElementById('callWithName').textContent = data.name + ' (' + data.phone + ')';
+    peerTransLang = data.transLang;
+  } else if(data.type === 'caption'){
+    showIncomingCaption(data.text, data.original);
+    if(voiceOn) speakText(data.text, peerListenLang());
+  }
+}
+
+function peerListenLang(){
+  const found = LANGS.find(l=>l[1]===peerTransLang);
+  return found ? found[0] : 'en-US';
+}
+
+function enterCallScreen(){
+  showScreen('callScreen');
+  document.getElementById('myLangPill').textContent = '🗣️ ' + myLangSel.options[myLangSel.selectedIndex].textContent;
+  setStatus('Call in progress', true);
+  startRecognition();
+}
+
+/* ---------------- Speech recognition + live translation ---------------- */
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+function startRecognition(){
+  if(!SpeechRecognition){
+    document.getElementById('captionBox').style.display='block';
+    document.getElementById('captionBox').textContent = 'This browser does not support live speech-to-text. Please use Chrome or Edge.';
+    return;
+  }
+  recognizer = new SpeechRecognition();
+  recognizer.lang = mySpeechLang;
+  recognizer.continuous = true;
+  recognizer.interimResults = false;
+
+  recognizer.onresult = async (e)=>{
+    const text = e.results[e.results.length-1][0].transcript.trim();
+    if(!text) return;
+    const [mySpeech, myTr] = myLangSel.value.split('|');
+    let translated = text;
+    try{
+      translated = await translateText(text, myTr, peerTransLang);
+    }catch(err){ /* fallback: send original */ }
+    if(conn && conn.open){
+      conn.send({type:'caption', text: translated, original: text});
+    }
+  };
+  recognizer.onerror = (e)=>{
+    if(e.error === 'no-speech' || e.error === 'aborted') return;
+  };
+  recognizer.onend = ()=>{
+    if(recognizing) recognizer.start();
+  };
+  recognizing = true;
+  try{ recognizer.start(); }catch(e){}
+}
+
+async function translateText(text, from, to){
+  if(from === to) return text;
+  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${from}|${to}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  return (data && data.responseData && data.responseData.translatedText) ? data.responseData.translatedText : text;
+}
+
+function showIncomingCaption(text, original){
+  if(!captionsOn) return;
+  const box = document.getElementById('captionBox');
+  box.style.display = 'block';
+  box.innerHTML = text + `<div class="orig">(original: ${original})</div>`;
+}
+
+function speakText(text, lang){
+  if(!window.speechSynthesis) return;
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = lang;
+  window.speechSynthesis.speak(utter);
+}
+
+/* ---------------- Controls ---------------- */
+document.getElementById('captionToggle').onclick = function(){
+  captionsOn = !captionsOn;
+  this.classList.toggle('on', captionsOn);
+  if(!captionsOn) document.getElementById('captionBox').style.display='none';
+};
+document.getElementById('voiceToggle').onclick = function(){
+  voiceOn = !voiceOn;
+  this.classList.toggle('on', voiceOn);
+};
+
+let micOn = true, camOn = true;
+document.getElementById('micBtn').onclick = function(){
+  micOn = !micOn;
+  localStream.getAudioTracks().forEach(t=>t.enabled = micOn);
+  this.classList.toggle('off', !micOn);
+  this.textContent = micOn ? '🎤' : '🔇';
+};
+document.getElementById('camBtn').onclick = function(){
+  camOn = !camOn;
+  localStream.getVideoTracks().forEach(t=>t.enabled = camOn);
+  this.classList.toggle('off', !camOn);
+  this.textContent = camOn ? '📹' : '📷';
+};
+document.getElementById('hangBtn').onclick = ()=>{ endCall(); };
+
+function endCall(){
+  recognizing = false;
+  try{ recognizer && recognizer.stop(); }catch(e){}
+  try{ call && call.close(); }catch(e){}
+  try{ conn && conn.close(); }catch(e){}
+  try{ peer && peer.destroy(); }catch(e){}
+  try{ localStream && localStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+  setStatus('Offline', false);
+  setTimeout(()=>location.reload(), 400);
+}
+
+/* ambient wave animation */
+(function(){
+  const w1 = document.getElementById('wave1'), w2 = document.getElementById('wave2');
+  let t=0;
+  function anim(){
+    t += 0.01;
+    const y = 420 + Math.sin(t)*18;
+    w1.setAttribute('d', `M-100,${y} Q100,${y-100} 300,${y} T700,${y} T1100,${y} T1500,${y}`);
+    const y2 = 460 + Math.cos(t*0.8)*22;
+    w2.setAttribute('d', `M-100,${y2} Q150,${y2+80} 350,${y2} T750,${y2} T1150,${y2} T1550,${y2}`);
+    requestAnimationFrame(anim);
+  }
+  anim();
+})();
+</script>
+</body>
+</html>
