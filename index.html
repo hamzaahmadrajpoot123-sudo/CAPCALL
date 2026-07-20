@@ -186,6 +186,7 @@
 
       <div class="call-topinfo">
         <div class="pill"><span class="dot live"></span> <span id="callWithName">Connected</span></div>
+        <div class="pill" id="dataStatusPill"><span class="dot" id="dataStatusDot"></span> <span id="dataStatusText">Captions: connecting...</span></div>
         <div class="pill" id="myLangPill">🗣️ —</div>
       </div>
 
@@ -253,7 +254,15 @@ LANGS.forEach(([speech,tr,label])=>{
 });
 myLangSel.value = "en-US|en";
 
-/* ---------------- Setup screen logic ---------------- */
+const ICE_CONFIG = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun.relay.metered.ca:80" },
+    { urls: "turn:global.relay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:global.relay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:global.relay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
+  ]
+};
 let mode = "new";
 document.querySelectorAll('.tab').forEach(t=>{
   t.onclick = ()=>{
@@ -315,7 +324,7 @@ function startAsHost(){
   document.getElementById('roomCodeDisplay').textContent = roomId;
   document.getElementById('roomStatusText').textContent = 'Connecting to signaling server...';
 
-  peer = new Peer(roomId, {debug:1});
+  peer = new Peer(roomId, {debug:1, config: ICE_CONFIG});
   peer.on('open', ()=>{
     document.getElementById('roomDot').classList.add('live');
     document.getElementById('roomStatusText').textContent = 'Ready — share the code and wait.';
@@ -325,6 +334,13 @@ function startAsHost(){
     call = incoming;
     call.answer(localStream);
     wireCallEvents();
+    // Fallback: if the joiner's data channel hasn't reached us in a few seconds, open our own
+    setTimeout(()=>{
+      if(!conn || !conn.open){
+        conn = peer.connect(incoming.peer, {reliable:true});
+        wireDataConn();
+      }
+    }, 4000);
   });
   peer.on('connection', c=>{
     conn = c;
@@ -347,13 +363,20 @@ function joinRoom(roomId){
   document.getElementById('roomSub').textContent = 'This should only take a moment.';
   document.getElementById('copyCodeBtn').style.display='none';
 
-  peer = new Peer({debug:1});
+  peer = new Peer({debug:1, config: ICE_CONFIG});
   peer.on('open', ()=>{
     setStatus('Online', true);
     conn = peer.connect(roomId, {reliable:true});
     wireDataConn();
     call = peer.call(roomId, localStream);
     wireCallEvents();
+    // Retry the data connection once if it hasn't opened in time
+    setTimeout(()=>{
+      if(!conn || !conn.open){
+        conn = peer.connect(roomId, {reliable:true});
+        wireDataConn();
+      }
+    }, 4000);
   });
   peer.on('error', err=>{ alert('Room not found or connection error: '+err.type); });
   document.getElementById('cancelRoomBtn').onclick = ()=>location.reload();
@@ -362,6 +385,12 @@ function joinRoom(roomId){
 function wireDataConn(){
   conn.on('open', ()=>{
     conn.send({type:'hello', name:myName, transLang:myTransLang, speechLang:mySpeechLang});
+    const dot = document.getElementById('dataStatusDot'), txt = document.getElementById('dataStatusText');
+    if(dot){ dot.classList.add('live'); txt.textContent = 'Captions: connected'; }
+  });
+  conn.on('close', ()=>{
+    const dot = document.getElementById('dataStatusDot'), txt = document.getElementById('dataStatusText');
+    if(dot){ dot.classList.remove('live'); txt.textContent = 'Captions: disconnected'; }
   });
   conn.on('data', handleData);
 }
