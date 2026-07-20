@@ -191,7 +191,7 @@
 
       <div class="toggle-row">
         <div class="mini-toggle on" id="captionToggle"><div class="box"></div> Live captions</div>
-        <div class="mini-toggle" id="voiceToggle"><div class="box"></div> Translated voice (TTS)</div>
+        <div class="mini-toggle on" id="voiceToggle"><div class="box"></div> Translated voice (TTS)</div>
       </div>
 
       <div class="caption-bar" style="flex-direction:column;align-items:center;gap:8px;">
@@ -273,7 +273,7 @@ let peer, conn, call, localStream;
 let myName, mySpeechLang, myTransLang;
 let peerTransLang = "en";
 let recognizer, recognizing = false;
-let captionsOn = true, voiceOn = false;
+let captionsOn = true, voiceOn = true;
 
 function setStatus(text, live){
   document.getElementById('statusText').textContent = text;
@@ -395,6 +395,7 @@ function enterCallScreen(){
   showScreen('callScreen');
   document.getElementById('myLangPill').textContent = '🗣️ ' + myLangSel.options[myLangSel.selectedIndex].textContent;
   setStatus('Call in progress', true);
+  applyRemoteVolume();
   startRecognition();
 }
 
@@ -410,13 +411,20 @@ function startRecognition(){
   recognizer = new SpeechRecognition();
   recognizer.lang = mySpeechLang;
   recognizer.continuous = true;
-  recognizer.interimResults = false;
+  recognizer.interimResults = true;
 
   recognizer.onresult = async (e)=>{
-    const text = e.results[e.results.length-1][0].transcript.trim();
+    const result = e.results[e.results.length-1];
+    const text = result[0].transcript.trim();
     if(!text) return;
-    const [mySpeech, myTr] = myLangSel.value.split('|');
+
+    // Show your own words the instant they're recognized (no translation wait — it's already your language)
     showSelfCaption(text);
+
+    // Only translate + send once the segment is final, to avoid spamming half-finished phrases
+    if(!result.isFinal) return;
+
+    const [mySpeech, myTr] = myLangSel.value.split('|');
     let translated = text;
     try{
       translated = await translateText(text, myTr, peerTransLang);
@@ -438,9 +446,17 @@ function startRecognition(){
 async function translateText(text, from, to){
   if(from === to) return text;
   const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${from}|${to}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  return (data && data.responseData && data.responseData.translatedText) ? data.responseData.translatedText : text;
+  const controller = new AbortController();
+  const timeout = setTimeout(()=>controller.abort(), 1500); // never block captions for long
+  try{
+    const res = await fetch(url, {signal: controller.signal});
+    const data = await res.json();
+    clearTimeout(timeout);
+    return (data && data.responseData && data.responseData.translatedText) ? data.responseData.translatedText : text;
+  }catch(err){
+    clearTimeout(timeout);
+    return text; // fall back to original rather than waiting further
+  }
 }
 
 function showIncomingCaption(text, original){
@@ -476,7 +492,13 @@ document.getElementById('captionToggle').onclick = function(){
 document.getElementById('voiceToggle').onclick = function(){
   voiceOn = !voiceOn;
   this.classList.toggle('on', voiceOn);
+  applyRemoteVolume();
 };
+
+function applyRemoteVolume(){
+  const rv = document.getElementById('remoteVideo');
+  rv.volume = voiceOn ? 0.25 : 1; // duck original audio so translated voice is clear
+}
 
 let micOn = true, camOn = true;
 document.getElementById('micBtn').onclick = function(){
