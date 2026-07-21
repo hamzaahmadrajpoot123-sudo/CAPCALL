@@ -507,25 +507,35 @@ function startRecognition(){
   recognizer.continuous = true;
   recognizer.interimResults = true;
 
-  recognizer.onresult = async (e)=>{
+  let debounceTimer = null;
+  let pendingText = '';
+
+  recognizer.onresult = (e)=>{
     const result = e.results[e.results.length-1];
     const text = result[0].transcript.trim();
     if(!text) return;
 
     // Show your own words the instant they're recognized (no translation wait — it's already your language)
     showSelfCaption(text);
+    pendingText = text;
 
-    // Only translate + send once the segment is final, to avoid spamming half-finished phrases
-    if(!result.isFinal) return;
-
-    const [mySpeech, myTr] = myLangSel.value.split('|');
-    let translated = text;
-    try{
-      translated = await translateText(text, myTr, peerTransLang);
-    }catch(err){ /* fallback: send original */ }
-    if(conn && conn.open){
-      conn.send({type:'caption', text: translated, original: text});
+    if(result.isFinal){
+      if(debounceTimer){ clearTimeout(debounceTimer); debounceTimer = null; }
+      finalizeAndSend(text);
+      pendingText = '';
+      return;
     }
+
+    // Some browsers rarely/never mark a result as "final" in continuous mode.
+    // So: if speech pauses for 900ms, treat the latest text as done and send it anyway.
+    if(debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(()=>{
+      if(pendingText){
+        finalizeAndSend(pendingText);
+        pendingText = '';
+      }
+      debounceTimer = null;
+    }, 900);
   };
   recognizer.onerror = (e)=>{
     if(e.error === 'no-speech' || e.error === 'aborted') return;
@@ -535,6 +545,17 @@ function startRecognition(){
   };
   recognizing = true;
   try{ recognizer.start(); }catch(e){}
+}
+
+async function finalizeAndSend(text){
+  const [mySpeech, myTr] = myLangSel.value.split('|');
+  let translated = text;
+  try{
+    translated = await translateText(text, myTr, peerTransLang);
+  }catch(err){ /* fallback: send original */ }
+  if(conn && conn.open){
+    conn.send({type:'caption', text: translated, original: text});
+  }
 }
 
 async function translateText(text, from, to){
