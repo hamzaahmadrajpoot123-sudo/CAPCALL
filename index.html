@@ -303,15 +303,26 @@ LANGS.forEach(([speech,tr,label])=>{
 });
 myLangSel.value = "en-US|en";
 
-const ICE_CONFIG = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun.relay.metered.ca:80" },
-    { urls: "turn:global.relay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
-    { urls: "turn:global.relay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
-    { urls: "turn:global.relay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
-  ]
-};
+const STUN_ONLY = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+
+async function fetchIceServers(){
+  // Dynamic, no-signup TURN credentials (elixir-webrtc/rel public test deployment).
+  // Falls back to STUN-only (direct P2P) if this is unreachable.
+  try{
+    const res = await fetch("https://turn.elixir-webrtc.org/?service=turn&username=capscall" + Date.now(), {method:'POST'});
+    if(!res.ok) throw new Error('turn credential fetch failed: ' + res.status);
+    const data = await res.json();
+    return {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: data.uris, username: data.username, credential: data.password }
+      ]
+    };
+  }catch(err){
+    console.warn('Dynamic TURN fetch failed, using STUN only (may fail across different networks):', err);
+    return STUN_ONLY;
+  }
+}
 let mode = "new";
 document.querySelectorAll('.tab').forEach(t=>{
   t.onclick = ()=>{
@@ -359,22 +370,23 @@ document.getElementById('startBtn').onclick = async ()=>{
   document.getElementById('localVideo').srcObject = localStream;
 
   if(mode === 'new'){
-    startAsHost();
+    await startAsHost();
   } else {
     const code = document.getElementById('joinCode').value.trim().toUpperCase();
     if(!code){ alert('Please enter a room code'); return; }
-    joinRoom(code);
+    await joinRoom(code);
   }
 };
 
-function startAsHost(){
+async function startAsHost(){
   const roomId = genRoomId();
   showScreen('roomScreen');
   document.getElementById('roomTitle').textContent = 'Waiting for the other person...';
   document.getElementById('roomCodeDisplay').textContent = roomId;
   document.getElementById('roomStatusText').textContent = 'Connecting to signaling server...';
 
-  peer = new Peer(roomId, {debug:1, config: ICE_CONFIG});
+  const iceConfig = await fetchIceServers();
+  peer = new Peer(roomId, {debug:1, config: iceConfig});
   peer.on('open', ()=>{
     document.getElementById('roomDot').classList.add('live');
     document.getElementById('roomStatusText').textContent = 'Ready — share the code and wait.';
@@ -384,13 +396,8 @@ function startAsHost(){
     call = incoming;
     call.answer(localStream);
     wireCallEvents();
-    // Fallback: if the joiner's data channel hasn't reached us in a few seconds, open our own
-    setTimeout(()=>{
-      if(!conn || !conn.open){
-        conn = peer.connect(incoming.peer, {reliable:true});
-        wireDataConn();
-      }
-    }, 4000);
+    // Fallback: if the joiner's data channel hasn't reached us, keep retrying to open our own
+    retryDataConnection(incoming.peer);
   });
   peer.on('connection', c=>{
     conn = c;
@@ -406,27 +413,36 @@ function startAsHost(){
   document.getElementById('cancelRoomBtn').onclick = ()=>location.reload();
 }
 
-function joinRoom(roomId){
+function retryDataConnection(remotePeerId){
+  let attempts = 0;
+  const tryOnce = ()=>{
+    attempts++;
+    if(conn && conn.open) return; // already connected, stop retrying
+    if(attempts > 5) return; // give up after several tries
+    conn = peer.connect(remotePeerId, {reliable:true});
+    wireDataConn();
+    setTimeout(tryOnce, 3500);
+  };
+  setTimeout(tryOnce, 3500);
+}
+
+async function joinRoom(roomId){
   showScreen('roomScreen');
   document.getElementById('roomTitle').textContent = 'Joining room...';
   document.getElementById('roomCodeDisplay').textContent = roomId;
   document.getElementById('roomSub').textContent = 'This should only take a moment.';
   document.getElementById('copyCodeBtn').style.display='none';
 
-  peer = new Peer({debug:1, config: ICE_CONFIG});
+  const iceConfig = await fetchIceServers();
+  peer = new Peer({debug:1, config: iceConfig});
   peer.on('open', ()=>{
     setStatus('Online', true);
     conn = peer.connect(roomId, {reliable:true});
     wireDataConn();
     call = peer.call(roomId, localStream);
     wireCallEvents();
-    // Retry the data connection once if it hasn't opened in time
-    setTimeout(()=>{
-      if(!conn || !conn.open){
-        conn = peer.connect(roomId, {reliable:true});
-        wireDataConn();
-      }
-    }, 4000);
+    // Keep retrying the data connection until it opens (or we give up)
+    retryDataConnection(roomId);
   });
   peer.on('error', err=>{ alert('Room not found or connection error: '+err.type); });
   document.getElementById('cancelRoomBtn').onclick = ()=>location.reload();
