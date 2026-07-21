@@ -623,7 +623,7 @@ document.getElementById('voiceToggle').onclick = function(){
 
 function applyRemoteVolume(){
   const rv = document.getElementById('remoteVideo');
-  rv.volume = voiceOn ? 0.25 : 1; // duck original audio so translated voice is clear
+  rv.volume = voiceOn ? 0 : 1; // when translated voice is on, fully mute the original so only the translation is heard
 }
 
 let micOn = true, camOn = true;
