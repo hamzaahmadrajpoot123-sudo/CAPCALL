@@ -478,7 +478,7 @@ function handleData(data){
     peerTransLang = data.transLang;
   } else if(data.type === 'caption'){
     showIncomingCaption(data.text, data.original);
-    if(voiceOn) speakText(data.text, peerListenLang());
+    if(voiceOn) speakText(data.text, mySpeechLang);
   } else if(data.type === 'draw-seg'){
     let stroke = strokes.find(s=>s.id===data.id);
     if(!stroke){ stroke = {id:data.id, type:'free', tool:data.tool, color:data.color, size:data.size, points:[data.p1]}; strokes.push(stroke); }
@@ -493,11 +493,6 @@ function handleData(data){
   } else if(data.type === 'share-status'){
     document.getElementById('callWithName').textContent = (data.sharing ? '🖥️ Sharing screen — ' : '') + peerName;
   }
-}
-
-function peerListenLang(){
-  const found = LANGS.find(l=>l[1]===peerTransLang);
-  return found ? found[0] : 'en-US';
 }
 
 function enterCallScreen(){
