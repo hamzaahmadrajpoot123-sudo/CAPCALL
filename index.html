@@ -599,11 +599,53 @@ function showSelfCaption(text){
   box.innerHTML = `<span class="tag">You said</span>${text}`;
 }
 
+/* ---------------- Text-to-speech (with voice-matching + failure fallback) ---------------- */
+let cachedVoices = [];
+let ttsFailedOnce = false;
+
+function loadVoices(){
+  if(window.speechSynthesis) cachedVoices = window.speechSynthesis.getVoices();
+}
+if(window.speechSynthesis){
+  loadVoices();
+  window.speechSynthesis.onvoiceschanged = loadVoices;
+}
+
+function pickVoice(lang){
+  if(!cachedVoices.length) loadVoices();
+  if(!cachedVoices.length) return null;
+  let v = cachedVoices.find(v=>v.lang.toLowerCase() === lang.toLowerCase());
+  if(v) return v;
+  const base = lang.split('-')[0].toLowerCase();
+  v = cachedVoices.find(v=>v.lang.toLowerCase().startsWith(base));
+  return v || null;
+}
+
 function speakText(text, lang){
-  if(!window.speechSynthesis) return;
+  if(!window.speechSynthesis){
+    console.warn('speechSynthesis not supported in this browser.');
+    return;
+  }
+  window.speechSynthesis.cancel(); // clear any stuck queue — a jammed queue silently drops new speech
   const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = lang;
+  const voice = pickVoice(lang);
+  if(voice){ utter.voice = voice; utter.lang = voice.lang; }
+  else { utter.lang = lang; console.warn('No installed voice found for', lang, '- browser will try its best, or may stay silent.'); }
+
+  let started = false;
+  utter.onstart = ()=>{ started = true; };
+  utter.onerror = ()=>{ handleTtsFailure(lang); };
   window.speechSynthesis.speak(utter);
+  // Some browsers silently no-op (no error event) for languages they can't speak — catch that too.
+  setTimeout(()=>{ if(!started) handleTtsFailure(lang); }, 1200);
+}
+
+function handleTtsFailure(lang){
+  if(ttsFailedOnce) return;
+  ttsFailedOnce = true;
+  console.warn('Translated voice could not play for language', lang, '- unmuting original audio so the call is not silent.');
+  const rv = document.getElementById('remoteVideo');
+  if(rv) rv.volume = 1;
 }
 
 /* ---------------- Controls ---------------- */
