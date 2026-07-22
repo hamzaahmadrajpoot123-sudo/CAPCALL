@@ -686,12 +686,19 @@ function pickVoiceForPref(lang, pref){
   return { voice: best, pitch, rate };
 }
 
+let ttsQueueLength = 0;
+const TTS_MAX_QUEUE = 3; // only trim if translation has fallen noticeably behind live speech
+
 function speakText(text, lang, pref){
   if(!window.speechSynthesis){
     console.warn('speechSynthesis not supported in this browser.');
     return;
   }
-  window.speechSynthesis.cancel(); // clear any stuck queue — a jammed queue silently drops new speech
+  // Don't interrupt speech that's already playing — only trim if a real backlog has built up
+  if(ttsQueueLength >= TTS_MAX_QUEUE){
+    window.speechSynthesis.cancel();
+    ttsQueueLength = 0;
+  }
   const utter = new SpeechSynthesisUtterance(text);
   const { voice, pitch, rate } = pickVoiceForPref(lang, pref || myVoicePref);
   if(voice){ utter.voice = voice; utter.lang = voice.lang; }
@@ -700,8 +707,10 @@ function speakText(text, lang, pref){
   utter.rate = rate;
 
   let started = false;
+  ttsQueueLength++;
   utter.onstart = ()=>{ started = true; };
-  utter.onerror = ()=>{ handleTtsFailure(lang); };
+  utter.onend = ()=>{ ttsQueueLength = Math.max(0, ttsQueueLength - 1); };
+  utter.onerror = ()=>{ ttsQueueLength = Math.max(0, ttsQueueLength - 1); handleTtsFailure(lang); };
   window.speechSynthesis.speak(utter);
   // Some browsers silently no-op (no error event) for languages they can't speak — catch that too.
   setTimeout(()=>{ if(!started) handleTtsFailure(lang); }, 1200);
