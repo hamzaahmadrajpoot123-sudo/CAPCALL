@@ -651,6 +651,7 @@ const GENDER_HINTS = {
   male: ['male','man','david','mark','alex','daniel','george','fred','guy','ravi','james','thomas','arthur','oliver','rishi'],
   female: ['female','woman','zira','samantha','victoria','karen','susan','fiona','moira','tessa','veena','salli','joanna','amy','emma','ava','sara','lucia','ines','aditi']
 };
+const CHILD_HINTS = ['child','kid','junior','young','boy','girl'];
 
 function pickVoiceForPref(lang, pref){
   if(!cachedVoices.length) loadVoices();
@@ -661,15 +662,25 @@ function pickVoiceForPref(lang, pref){
   }
   if(!candidates.length) candidates = cachedVoices; // last resort: any voice at all
 
+  const isChild = (pref === 'boy' || pref === 'girl');
   const wantGender = (pref === 'man' || pref === 'boy') ? 'male' : 'female';
-  const hints = GENDER_HINTS[wantGender];
-  let best = candidates.find(v => hints.some(h => v.name.toLowerCase().includes(h)));
+  let best = null;
+
+  // For child voices, first look for an actual child/kid-labeled voice (rare, but some platforms have them)
+  if(isChild){
+    best = candidates.find(v => CHILD_HINTS.some(h => v.name.toLowerCase().includes(h)));
+  }
+  if(!best){
+    const hints = GENDER_HINTS[wantGender];
+    best = candidates.find(v => hints.some(h => v.name.toLowerCase().includes(h)));
+  }
   if(!best) best = candidates[0] || null;
 
+  // Pitch/rate profile — child voices are pushed much further from adult ones so they sound clearly distinct
   let pitch = 1.0, rate = 1.0;
-  if(pref === 'boy'){ pitch = 1.35; rate = 1.05; }
-  else if(pref === 'girl'){ pitch = 1.55; rate = 1.05; }
-  else if(pref === 'man'){ pitch = 0.92; rate = 1.0; }
+  if(pref === 'boy'){ pitch = 1.7; rate = 1.18; }
+  else if(pref === 'girl'){ pitch = 1.9; rate = 1.2; }
+  else if(pref === 'man'){ pitch = 0.88; rate = 0.98; }
   else if(pref === 'woman'){ pitch = 1.08; rate = 1.0; }
 
   return { voice: best, pitch, rate };
