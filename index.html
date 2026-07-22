@@ -643,9 +643,7 @@ function speakText(text, lang){
 function handleTtsFailure(lang){
   if(ttsFailedOnce) return;
   ttsFailedOnce = true;
-  console.warn('Translated voice could not play for language', lang, '- unmuting original audio so the call is not silent.');
-  const rv = document.getElementById('remoteVideo');
-  if(rv) rv.volume = 1;
+  console.warn('Translated voice could not play for language', lang, '- original audio stays muted (translated voice only, by design). Caption text still shows.');
 }
 
 /* ---------------- Controls ---------------- */
