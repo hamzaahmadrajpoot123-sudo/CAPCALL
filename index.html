@@ -68,6 +68,11 @@
   .hint{font-size:12px;color:var(--text-lo);margin-top:10px;line-height:1.6;}
   .hint b{color:var(--gold-soft);}
 
+  .voice-pref-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  .vp-btn{padding:12px 4px;border-radius:10px;border:1px solid var(--line);background:#0d1f25;color:var(--text-hi);font-size:12px;cursor:pointer;text-align:center;line-height:1.7;font-family:inherit;}
+  .vp-btn.active{border-color:var(--gold);background:#22333b;color:var(--gold-soft);}
+  .vp-btn.speaking{border-color:var(--teal);}
+
   .status-line{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-lo);margin-top:14px;}
   .dot{width:8px;height:8px;border-radius:50%;background:var(--text-lo);}
   .dot.live{background:var(--teal);box-shadow:0 0 0 4px rgba(63,184,168,.15);}
@@ -163,6 +168,15 @@
 
       <label>Your language (what you'll speak)</label>
       <select id="myLang"></select>
+
+      <label style="margin-top:20px;">Translated voice you want to hear</label>
+      <div class="voice-pref-grid" id="voicePrefGrid">
+        <button class="vp-btn" data-pref="man">👨<br>Man</button>
+        <button class="vp-btn active" data-pref="woman">👩<br>Woman</button>
+        <button class="vp-btn" data-pref="boy">👦<br>Boy</button>
+        <button class="vp-btn" data-pref="girl">👧<br>Girl</button>
+      </div>
+      <div class="hint" id="voicePrefHint">Tap an option to hear a quick sample.</div>
 
       <label style="margin-top:20px;">Call type</label>
       <div class="tabs">
@@ -302,6 +316,27 @@ LANGS.forEach(([speech,tr,label])=>{
   myLangSel.appendChild(o);
 });
 myLangSel.value = "en-US|en";
+
+document.querySelectorAll('.vp-btn').forEach(btn=>{
+  btn.onclick = async ()=>{
+    document.querySelectorAll('.vp-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    myVoicePref = btn.dataset.pref;
+    await previewVoice(btn);
+  };
+});
+
+async function previewVoice(btn){
+  const hintEl = document.getElementById('voicePrefHint');
+  if(hintEl) hintEl.textContent = 'Loading sample...';
+  const [sp, tr] = myLangSel.value.split('|');
+  let sample = "Hello, this is a sample of this voice.";
+  try{ sample = await translateText(sample, 'en', tr); }catch(e){ /* fall back to English sample */ }
+  if(btn) btn.classList.add('speaking');
+  speakText(sample, sp, myVoicePref);
+  if(hintEl) hintEl.textContent = 'Tap an option to hear a quick sample.';
+  setTimeout(()=>{ if(btn) btn.classList.remove('speaking'); }, 1500);
+}
 
 const STUN_ONLY = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
@@ -478,7 +513,7 @@ function handleData(data){
     peerTransLang = data.transLang;
   } else if(data.type === 'caption'){
     showIncomingCaption(data.text, data.original);
-    if(voiceOn) speakText(data.text, mySpeechLang);
+    if(voiceOn) speakText(data.text, mySpeechLang, myVoicePref);
   } else if(data.type === 'draw-seg'){
     let stroke = strokes.find(s=>s.id===data.id);
     if(!stroke){ stroke = {id:data.id, type:'free', tool:data.tool, color:data.color, size:data.size, points:[data.p1]}; strokes.push(stroke); }
@@ -599,9 +634,10 @@ function showSelfCaption(text){
   box.innerHTML = `<span class="tag">You said</span>${text}`;
 }
 
-/* ---------------- Text-to-speech (with voice-matching + failure fallback) ---------------- */
+/* ---------------- Text-to-speech (voice preference + failure fallback) ---------------- */
 let cachedVoices = [];
 let ttsFailedOnce = false;
+let myVoicePref = 'woman';
 
 function loadVoices(){
   if(window.speechSynthesis) cachedVoices = window.speechSynthesis.getVoices();
@@ -611,26 +647,46 @@ if(window.speechSynthesis){
   window.speechSynthesis.onvoiceschanged = loadVoices;
 }
 
-function pickVoice(lang){
+const GENDER_HINTS = {
+  male: ['male','man','david','mark','alex','daniel','george','fred','guy','ravi','james','thomas','arthur','oliver','rishi'],
+  female: ['female','woman','zira','samantha','victoria','karen','susan','fiona','moira','tessa','veena','salli','joanna','amy','emma','ava','sara','lucia','ines','aditi']
+};
+
+function pickVoiceForPref(lang, pref){
   if(!cachedVoices.length) loadVoices();
-  if(!cachedVoices.length) return null;
-  let v = cachedVoices.find(v=>v.lang.toLowerCase() === lang.toLowerCase());
-  if(v) return v;
-  const base = lang.split('-')[0].toLowerCase();
-  v = cachedVoices.find(v=>v.lang.toLowerCase().startsWith(base));
-  return v || null;
+  let candidates = cachedVoices.filter(v=>v.lang.toLowerCase() === lang.toLowerCase());
+  if(!candidates.length){
+    const base = lang.split('-')[0].toLowerCase();
+    candidates = cachedVoices.filter(v=>v.lang.toLowerCase().startsWith(base));
+  }
+  if(!candidates.length) candidates = cachedVoices; // last resort: any voice at all
+
+  const wantGender = (pref === 'man' || pref === 'boy') ? 'male' : 'female';
+  const hints = GENDER_HINTS[wantGender];
+  let best = candidates.find(v => hints.some(h => v.name.toLowerCase().includes(h)));
+  if(!best) best = candidates[0] || null;
+
+  let pitch = 1.0, rate = 1.0;
+  if(pref === 'boy'){ pitch = 1.35; rate = 1.05; }
+  else if(pref === 'girl'){ pitch = 1.55; rate = 1.05; }
+  else if(pref === 'man'){ pitch = 0.92; rate = 1.0; }
+  else if(pref === 'woman'){ pitch = 1.08; rate = 1.0; }
+
+  return { voice: best, pitch, rate };
 }
 
-function speakText(text, lang){
+function speakText(text, lang, pref){
   if(!window.speechSynthesis){
     console.warn('speechSynthesis not supported in this browser.');
     return;
   }
   window.speechSynthesis.cancel(); // clear any stuck queue — a jammed queue silently drops new speech
   const utter = new SpeechSynthesisUtterance(text);
-  const voice = pickVoice(lang);
+  const { voice, pitch, rate } = pickVoiceForPref(lang, pref || myVoicePref);
   if(voice){ utter.voice = voice; utter.lang = voice.lang; }
   else { utter.lang = lang; console.warn('No installed voice found for', lang, '- browser will try its best, or may stay silent.'); }
+  utter.pitch = pitch;
+  utter.rate = rate;
 
   let started = false;
   utter.onstart = ()=>{ started = true; };
