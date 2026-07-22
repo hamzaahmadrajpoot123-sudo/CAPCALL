@@ -678,10 +678,10 @@ function pickVoiceForPref(lang, pref){
 
   // Pitch/rate profile — child voices are pushed much further from adult ones so they sound clearly distinct
   let pitch = 1.0, rate = 1.0;
-  if(pref === 'boy'){ pitch = 1.7; rate = 1.18; }
-  else if(pref === 'girl'){ pitch = 1.9; rate = 1.2; }
-  else if(pref === 'man'){ pitch = 0.88; rate = 0.98; }
-  else if(pref === 'woman'){ pitch = 1.08; rate = 1.0; }
+  if(pref === 'boy'){ pitch = 1.3; rate = 1.08; }
+  else if(pref === 'girl'){ pitch = 1.42; rate = 1.08; }
+  else if(pref === 'man'){ pitch = 0.95; rate = 1.0; }
+  else if(pref === 'woman'){ pitch = 1.06; rate = 1.0; }
 
   return { voice: best, pitch, rate };
 }
