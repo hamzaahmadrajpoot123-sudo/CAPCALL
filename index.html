@@ -32,7 +32,7 @@
   /* ===== TOP BAR ===== */
   .topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 28px;border-bottom:1px solid var(--line);}
   .brand{display:flex;align-items:center;gap:10px;}
-  .brand-mark{width:34px;height:34px;border-radius:9px;background:conic-gradient(from 180deg, var(--gold), var(--teal), var(--gold));display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--bg-deep);font-size:15px;}
+  .brand-mark{width:34px;height:34px;border-radius:9px;object-fit:cover;display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--bg-deep);font-size:15px;flex:none;}
   .brand-name{font-weight:800;letter-spacing:.2px;font-size:18px;}
   .brand-tag{font-size:11px;color:var(--text-lo);letter-spacing:.5px;text-transform:uppercase;}
 
@@ -148,7 +148,7 @@
 <div class="app">
   <div class="topbar">
     <div class="brand">
-      <div class="brand-mark">C</div>
+      <img class="brand-mark" src="logo.jpg" alt="CapsCall logo">
       <div>
         <div class="brand-name">CapsCall</div>
         <div class="brand-tag">Talk your language. They read theirs.</div>
