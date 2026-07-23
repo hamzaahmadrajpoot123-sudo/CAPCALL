@@ -546,7 +546,11 @@ function handleData(data){
   }
 }
 
+let callScreenEntered = false;
+
 function enterCallScreen(){
+  if(callScreenEntered) return; // avoid starting a second recognizer if 'stream' fires more than once
+  callScreenEntered = true;
   showScreen('callScreen');
   document.getElementById('myLangPill').textContent = '🗣️ ' + myLangSel.options[myLangSel.selectedIndex].textContent;
   setStatus('Call in progress', true);
@@ -601,12 +605,25 @@ function startRecognition(){
   };
   recognizer.onerror = (e)=>{
     if(e.error === 'no-speech' || e.error === 'aborted') return;
+    console.warn('Speech recognition error:', e.error, '- will retry shortly.');
   };
   recognizer.onend = ()=>{
-    if(recognizing) recognizer.start();
+    if(recognizing){
+      try{ recognizer.start(); }
+      catch(e){ console.warn('Recognizer restart failed, retrying in 1s:', e); setTimeout(()=>{ if(recognizing) startRecognitionSafe(); }, 1000); }
+    }
   };
   recognizing = true;
-  try{ recognizer.start(); }catch(e){}
+  startRecognitionSafe();
+}
+
+function startRecognitionSafe(){
+  try{
+    recognizer.start();
+  }catch(e){
+    console.warn('Recognizer failed to start, retrying in 1s:', e);
+    setTimeout(()=>{ if(recognizing) startRecognitionSafe(); }, 1000);
+  }
 }
 
 async function finalizeAndSend(text){
