@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --bg-deep:#3d2b1c;
@@ -160,10 +161,21 @@
   </div>
 
   <!-- SETUP SCREEN -->
-  <div class="screen active" id="setupScreen">
+  <!-- SIGN-IN SCREEN -->
+  <div class="screen active" id="signInScreen">
+    <div class="card" style="text-align:center;">
+      <h1>Welcome to CapsCall</h1>
+      <div class="sub">Please sign in with Google to continue.</div>
+      <div id="googleSignInBtn" style="display:flex; justify-content:center; margin-top:22px;"></div>
+    </div>
+  </div>
+
+  <!-- SETUP SCREEN -->
+  <div class="screen" id="setupScreen">
     <div class="card">
       <h1>Set up your call</h1>
       <div class="sub">Enter your name, start a call, and send the code to the person you want to talk to.</div>
+      <div id="signedInAs" style="font-size:11.5px;color:var(--text-lo);margin-bottom:14px;display:none;">Signed in as <span id="signedInName"></span> · <a href="#" id="signOutLink" style="color:var(--gold-soft);">Sign out</a></div>
 
       <label>Your name</label>
       <input type="text" id="userName" placeholder="e.g. Hamza">
@@ -278,6 +290,66 @@
 
 <script>
 /* ---------------- Language list (speech + translate codes) ---------------- */
+/* ---------------- Google Sign-In ---------------- */
+// Replace this with your own OAuth Client ID from Google Cloud Console (Credentials > OAuth client ID > Web application)
+const GOOGLE_CLIENT_ID = "REPLACE_WITH_YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com";
+
+let currentUser = null;
+
+function parseJwt(token){
+  const base64Url = token.split('.')[1];
+  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+  const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+  return JSON.parse(jsonPayload);
+}
+
+function handleGoogleSignIn(response){
+  const payload = parseJwt(response.credential);
+  currentUser = { name: payload.name, email: payload.email, picture: payload.picture };
+  localStorage.setItem('capscall_user', JSON.stringify(currentUser));
+  enterAppAfterSignIn();
+}
+
+function enterAppAfterSignIn(){
+  showScreen('setupScreen');
+  if(currentUser && currentUser.name){
+    document.getElementById('userName').value = currentUser.name;
+    document.getElementById('signedInName').textContent = currentUser.name;
+    document.getElementById('signedInAs').style.display = 'block';
+  }
+}
+
+function initGoogleSignIn(){
+  if(!window.google || !google.accounts){ setTimeout(initGoogleSignIn, 300); return; }
+
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: handleGoogleSignIn,
+    auto_select: true
+  });
+
+  const btnHost = document.getElementById('googleSignInBtn');
+  if(btnHost){
+    google.accounts.id.renderButton(btnHost, { theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with' });
+  }
+
+  const saved = localStorage.getItem('capscall_user');
+  if(saved){
+    try{ currentUser = JSON.parse(saved); enterAppAfterSignIn(); }
+    catch(e){ localStorage.removeItem('capscall_user'); }
+  }
+}
+
+document.getElementById('signOutLink').onclick = (e)=>{
+  e.preventDefault();
+  localStorage.removeItem('capscall_user');
+  currentUser = null;
+  if(window.google && google.accounts) google.accounts.id.disableAutoSelect();
+  location.reload();
+};
+
+initGoogleSignIn();
+
 const LANGS = [
  ["en-US","en","English"],
  ["ur-PK","ur","Urdu"],
