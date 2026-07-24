@@ -266,6 +266,10 @@
         <div class="pill" id="myLangPill">🗣️ —</div>
       </div>
 
+      <div style="position:absolute; top:56px; left:16px; z-index:4;">
+        <div class="pill" id="recoStatusPill" style="font-size:11px;">🎙️ Starting mic recognition...</div>
+      </div>
+
       <div class="toggle-row">
         <div class="mini-toggle on" id="captionToggle"><div class="box"></div> Live captions</div>
         <div class="mini-toggle on" id="voiceToggle"><div class="box"></div> Translated voice (TTS)</div>
@@ -562,10 +566,16 @@ function enterCallScreen(){
 /* ---------------- Speech recognition + live translation ---------------- */
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
+function setRecoStatus(text){
+  const el = document.getElementById('recoStatusPill');
+  if(el) el.textContent = '🎙️ ' + text;
+}
+
 function startRecognition(){
   if(!SpeechRecognition){
     document.getElementById('captionBox').style.display='block';
     document.getElementById('captionBox').textContent = 'This browser does not support live speech-to-text. Please use Chrome or Edge.';
+    setRecoStatus('Not supported in this browser');
     return;
   }
   recognizer = new SpeechRecognition();
@@ -576,10 +586,13 @@ function startRecognition(){
   let debounceTimer = null;
   let pendingText = '';
 
+  recognizer.onstart = ()=>{ setRecoStatus('Listening (' + mySpeechLang + ')'); };
+
   recognizer.onresult = (e)=>{
     const result = e.results[e.results.length-1];
     const text = result[0].transcript.trim();
     if(!text) return;
+    setRecoStatus('Heard: "' + text.slice(0,30) + '"');
 
     // Show your own words the instant they're recognized (no translation wait — it's already your language)
     showSelfCaption(text);
@@ -604,13 +617,15 @@ function startRecognition(){
     }, 900);
   };
   recognizer.onerror = (e)=>{
-    if(e.error === 'no-speech' || e.error === 'aborted') return;
+    if(e.error === 'no-speech'){ setRecoStatus('Listening — no speech detected yet'); return; }
+    if(e.error === 'aborted') return;
+    setRecoStatus('ERROR: ' + e.error);
     console.warn('Speech recognition error:', e.error, '- will retry shortly.');
   };
   recognizer.onend = ()=>{
     if(recognizing){
       try{ recognizer.start(); }
-      catch(e){ console.warn('Recognizer restart failed, retrying in 1s:', e); setTimeout(()=>{ if(recognizing) startRecognitionSafe(); }, 1000); }
+      catch(e){ setRecoStatus('Restart failed: ' + e.message); console.warn('Recognizer restart failed, retrying in 1s:', e); setTimeout(()=>{ if(recognizing) startRecognitionSafe(); }, 1000); }
     }
   };
   recognizing = true;
@@ -621,6 +636,7 @@ function startRecognitionSafe(){
   try{
     recognizer.start();
   }catch(e){
+    setRecoStatus('Start failed: ' + e.message);
     console.warn('Recognizer failed to start, retrying in 1s:', e);
     setTimeout(()=>{ if(recognizing) startRecognitionSafe(); }, 1000);
   }
@@ -634,6 +650,9 @@ async function finalizeAndSend(text){
   }catch(err){ /* fallback: send original */ }
   if(conn && conn.open){
     conn.send({type:'caption', text: translated, original: text});
+    setRecoStatus('Sent: "' + text.slice(0,30) + '"');
+  } else {
+    setRecoStatus('Could NOT send — data channel not open');
   }
 }
 
