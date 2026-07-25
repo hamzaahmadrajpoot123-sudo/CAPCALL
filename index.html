@@ -706,11 +706,21 @@ const GENDER_HINTS = {
 const CHILD_HINTS = ['child','kid','junior','young','boy','girl'];
 
 function pickVoiceForPref(lang, pref){
-  if(!cachedVoices.length) loadVoices();
+  loadVoices(); // always refresh — a voice installed after page load won't be in a stale cache
+
   let candidates = cachedVoices.filter(v=>v.lang.toLowerCase() === lang.toLowerCase());
   if(!candidates.length){
     const base = lang.split('-')[0].toLowerCase();
     candidates = cachedVoices.filter(v=>v.lang.toLowerCase().startsWith(base));
+  }
+  if(!candidates.length){
+    // Some OS/browsers label voices in ways that don't match the BCP-47 tag exactly.
+    // Fall back to matching the language's plain name (e.g. "Urdu") inside the voice's name.
+    const langEntry = LANGS.find(l => l[0].toLowerCase() === lang.toLowerCase());
+    if(langEntry){
+      const plainName = langEntry[2].toLowerCase();
+      candidates = cachedVoices.filter(v => v.name.toLowerCase().includes(plainName));
+    }
   }
   if(!candidates.length) candidates = cachedVoices; // last resort: any voice at all
 
