@@ -722,7 +722,12 @@ function pickVoiceForPref(lang, pref){
       candidates = cachedVoices.filter(v => v.name.toLowerCase().includes(plainName));
     }
   }
-  if(!candidates.length) candidates = cachedVoices; // last resort: any voice at all
+
+  // If genuinely no voice exists for this language, don't substitute a different-language voice —
+  // that would speak the text in the wrong language/accent. Better to stay silent than speak Urdu in an English voice.
+  if(!candidates.length){
+    return { voice: null, pitch: 1.0, rate: 1.0, noMatch: true };
+  }
 
   const isChild = (pref === 'boy' || pref === 'girl');
   const wantGender = (pref === 'man' || pref === 'boy') ? 'male' : 'female';
@@ -756,15 +761,20 @@ function speakText(text, lang, pref){
     console.warn('speechSynthesis not supported in this browser.');
     return;
   }
+  const { voice, pitch, rate, noMatch } = pickVoiceForPref(lang, pref || myVoicePref);
+  if(noMatch){
+    console.warn('No voice installed for', lang, '- staying silent instead of speaking in the wrong language. Caption text still shows.');
+    setRecoStatus('No ' + lang + ' voice on this device — caption only');
+    return;
+  }
   // Don't interrupt speech that's already playing — only trim if a real backlog has built up
   if(ttsQueueLength >= TTS_MAX_QUEUE){
     window.speechSynthesis.cancel();
     ttsQueueLength = 0;
   }
   const utter = new SpeechSynthesisUtterance(text);
-  const { voice, pitch, rate } = pickVoiceForPref(lang, pref || myVoicePref);
-  if(voice){ utter.voice = voice; utter.lang = voice.lang; }
-  else { utter.lang = lang; console.warn('No installed voice found for', lang, '- browser will try its best, or may stay silent.'); }
+  utter.voice = voice;
+  utter.lang = voice.lang;
   utter.pitch = pitch;
   utter.rate = rate;
 
